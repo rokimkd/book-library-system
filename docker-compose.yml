@@ -1,0 +1,95 @@
+services:
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx.dockerfile
+    ports:
+      - 8051:80
+    container_name: book-library-nginx
+    volumes:
+      - ./src:/var/www/html
+    networks:
+      book-library:
+        aliases:
+          - book-library.devel
+    depends_on:
+      - mysql
+      - php
+      - redis
+  mysql:
+    image: mysql:${MYSQL_VERSION}
+    container_name: book-library-mysql
+    command: --sort_buffer_size=512M
+    ports:
+      - 3307:3306
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - ./mysql:/var/lib/mysql
+      - ./db_dumps:/var/db_dumps
+    networks:
+      - book-library
+  php:
+    build:
+      context: .
+      dockerfile: php.dockerfile
+    container_name: book-library-php
+    volumes:
+      - ./src:/var/www/html
+    working_dir: /var/www/html
+    command: ["php", "artisan", "octane:start", "--host=0.0.0.0", "--port=8000", "--server=swoole"]
+    networks:
+      - book-library
+  redis:
+    image: redis:${REDIS_VERSION}
+    container_name: book-library-redis
+    entrypoint: [ "redis-server", "--requirepass ${REDIS_PASSWORD}" ]
+    volumes:
+      - ./redis:/data
+    ports:
+      - 6380:6379
+    networks:
+      - book-library
+  phpmyadmin:
+    image: phpmyadmin:${PHP_MY_ADMIN_VERSION}
+    container_name: book-library-phpmyadmin
+    ports:
+      - 8090:80
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      PMA_HOST: mysql
+    links:
+      - "mysql:db"
+    volumes:
+      - ./phpmyadmin/config.user.inc.php:/etc/phpmyadmin/config.user.inc.php
+    networks:
+      - book-library
+    depends_on:
+      - mysql
+  composer:
+    build:
+      context: .
+      dockerfile: composer.dockerfile
+    volumes:
+      - ./src:/var/www/html
+    networks:
+      - book-library
+    working_dir: /var/www/html
+    user: ${COMPOSERUSER}
+  artisan:
+    build:
+      context: .
+      dockerfile: php.dockerfile
+    user: '1000'
+    volumes:
+      - ./src:/var/www/html
+    working_dir: /var/www/html
+    networks:
+      - book-library
+    entrypoint: ["php", "/var/www/html/artisan"]
+networks:
+  book-library:
+    driver: bridge
